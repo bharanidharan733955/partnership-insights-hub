@@ -1,17 +1,32 @@
-const prisma = require('../prisma');
+const Partner = require('../models/Partner');
 
 const getPartners = async (req, res) => {
     try {
         const { role, partnerId } = req.user;
-        let where = {};
+        let query = {};
         if (role === 'PARTNER') {
-            where = { id: partnerId };
+            query = { _id: partnerId };
         }
-        const partners = await prisma.partner.findMany({
-            where,
-            include: { branches: true }
-        });
-        res.json(partners);
+
+        const partners = await Partner.find(query).lean();
+
+        const Branch = require('../models/Branch');
+        const result = [];
+        for (const p of partners) {
+            const branches = await Branch.find({ partnerId: p._id }).lean();
+            result.push({
+                ...p,
+                id: p._id.toString(),
+                branches: branches.map(b => ({
+                    ...b,
+                    id: b._id.toString(),
+                    partner_id: b.partnerId?.toString(),
+                    partners: { name: p.name },
+                })),
+            });
+        }
+
+        res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -20,8 +35,8 @@ const getPartners = async (req, res) => {
 const createPartner = async (req, res) => {
     try {
         const { name } = req.body;
-        const partner = await prisma.partner.create({ data: { name } });
-        res.status(201).json(partner);
+        const partner = await Partner.create({ name });
+        res.status(201).json({ id: partner._id.toString(), ...partner.toObject() });
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
@@ -29,11 +44,10 @@ const createPartner = async (req, res) => {
 
 const createBranch = async (req, res) => {
     try {
+        const Branch = require('../models/Branch');
         const { partnerId, name, location } = req.body;
-        const branch = await prisma.branch.create({
-            data: { partnerId, name, location }
-        });
-        res.status(201).json(branch);
+        const branch = await Branch.create({ partnerId, name, location });
+        res.status(201).json({ id: branch._id.toString(), ...branch.toObject() });
     } catch (err) {
         res.status(400).json({ error: err.message });
     }

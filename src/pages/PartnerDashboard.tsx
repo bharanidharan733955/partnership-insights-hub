@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { getSalesHistory, submitSales } from '@/lib/api';
 import {
   Plus, History, Save, Calendar, TrendingUp, AlertCircle, DollarSign, Package, BarChart3,
 } from 'lucide-react';
@@ -44,16 +44,20 @@ const PartnerDashboard = () => {
 
   const fetchHistory = async () => {
     try {
-      const { data, error } = await supabase
-        .from('sales_records')
-        .select('*')
-        .order('date', { ascending: false });
-
-      if (error) throw error;
-      setSales(data || []);
+      const data = await getSalesHistory();
+      const list = Array.isArray(data) ? data : [];
+      setSales(list.map((r: any) => ({
+        id: r.id,
+        date: typeof r.date === 'string' ? r.date : r.date?.toISOString?.()?.split('T')[0] ?? '',
+        product_name: r.productName ?? r.product_name ?? '',
+        quantity: r.quantity ?? 0,
+        sales_amount: r.salesAmount ?? r.sales_amount ?? 0,
+        profit: r.profit ?? 0,
+        created_at: r.createdAt ?? r.created_at ?? '',
+      })));
     } catch (err: any) {
       console.error('Failed to fetch sales history', err);
-      toast.error('Failed to load sales data');
+      toast.error(err.message || 'Failed to load sales data');
     } finally {
       setLoading(false);
     }
@@ -67,20 +71,13 @@ const PartnerDashboard = () => {
     }
     setSubmitting(true);
     try {
-      const { error } = await supabase.from('sales_records').upsert(
-        {
-          date: formData.date,
-          product_name: formData.productName.trim(),
-          quantity: parseInt(formData.quantity),
-          sales_amount: parseFloat(formData.salesAmount),
-          profit: parseFloat(formData.profit),
-          branch_id: user.branch_id,
-          submitted_by: user.user_id,
-        },
-        { onConflict: 'date,branch_id,product_name' }
-      );
-
-      if (error) throw error;
+      await submitSales({
+        date: formData.date,
+        productName: formData.productName.trim(),
+        quantity: parseInt(formData.quantity, 10),
+        salesAmount: parseFloat(formData.salesAmount),
+        profit: parseFloat(formData.profit),
+      });
 
       setFormData({
         productName: '',
@@ -339,8 +336,8 @@ const PartnerDashboard = () => {
             <CardDescription>Revenue and profit trends for your branch</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-[300px] min-h-[250px] w-full">
+              <ResponsiveContainer width="100%" height="100%" minHeight={250}>
                 <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                   <XAxis
