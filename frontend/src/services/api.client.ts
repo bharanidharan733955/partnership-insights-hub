@@ -1,0 +1,55 @@
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import type { ApiError } from '../types/api.types';
+
+// Create axios instance with default config
+const apiClient: AxiosInstance = axios.create({
+    baseURL: '/api',
+    headers: {
+        'Content-Type': 'application/json',
+    },
+    timeout: 10000, // 10 seconds
+});
+
+// Request interceptor to add auth token
+apiClient.interceptors.request.use(
+    (config: InternalAxiosRequestConfig) => {
+        const token = localStorage.getItem('auth_token');
+        if (token && config.headers) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+    },
+    (error: AxiosError) => {
+        return Promise.reject(error);
+    }
+);
+
+// Response interceptor for error handling
+apiClient.interceptors.response.use(
+    (response) => response,
+    (error: AxiosError<ApiError>) => {
+        // Handle specific error cases
+        if (error.response) {
+            // Server responded with error status
+            const apiError = error.response.data;
+            const errorMessage = apiError?.error || apiError?.message || 'An error occurred';
+
+            // Handle 401 Unauthorized - clear auth and redirect to login
+            if (error.response.status === 401) {
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('user');
+                window.location.href = '/';
+            }
+
+            return Promise.reject(new Error(errorMessage));
+        } else if (error.request) {
+            // Request made but no response received
+            return Promise.reject(new Error('No response from server. Please check your connection.'));
+        } else {
+            // Error in request setup
+            return Promise.reject(new Error(error.message || 'Request failed'));
+        }
+    }
+);
+
+export default apiClient;
