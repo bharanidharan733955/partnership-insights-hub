@@ -9,7 +9,7 @@ const submitSales = async (req, res) => {
         const record = await SalesRecord.findOneAndUpdate(
             { date: new Date(date), branchId, productName },
             { quantity, salesAmount, profit },
-            { new: true, upsert: true, runValidators: true }
+            { returnDocument: 'after', upsert: true, runValidators: true }
         )
             .populate({ path: 'branchId', populate: { path: 'partnerId' } });
 
