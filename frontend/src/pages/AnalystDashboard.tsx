@@ -216,7 +216,7 @@ const AnalystDashboard = () => {
     }
     try {
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const pageW = doc.getPageWidth();
+      const pageW = doc.internal.pageSize.getWidth();
       const margin = 15;
       const colW = (pageW - margin * 2) / 8;
       let y = 20;
@@ -267,7 +267,7 @@ const AnalystDashboard = () => {
           const canvas = await html2canvas(chartRef.current, { scale: 2, useCORS: true, logging: false });
           const imgData = canvas.toDataURL('image/png');
           doc.addPage('a4', 'landscape');
-          const imgW = doc.getPageWidth();
+          const imgW = doc.internal.pageSize.getWidth();
           const imgH = (canvas.height * imgW) / canvas.width;
           doc.addImage(imgData, 'PNG', 10, 15, Math.min(imgW - 20, 270), Math.min(imgH, 170));
         } catch {
