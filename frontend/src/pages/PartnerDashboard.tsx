@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getSalesHistory, submitSales } from '@/lib/api';
+import { getSalesHistory, submitSales, submitCustomerFeedback } from '@/lib/api';
 import {
   Plus, History, Save, Calendar, TrendingUp, AlertCircle, DollarSign, Package, BarChart3,
+  Users, Star, MessageSquare, ChevronDown, ChevronUp, ThumbsUp,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -25,11 +27,42 @@ interface SalesRecord {
   created_at: string;
 }
 
+const defaultFeedback = {
+  totalCustomers: '',
+  satisfiedCustomers: '',
+  overallRating: 0,
+  complaints: '',
+  highlights: '',
+};
+
+const StarRating = ({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) => (
+  <div className="flex gap-1">
+    {[1, 2, 3, 4, 5].map((star) => (
+      <button
+        key={star}
+        type="button"
+        onClick={() => onChange(star)}
+        className={`transition-all hover:scale-110 ${star <= value ? 'text-yellow-400' : 'text-muted-foreground/30'
+          }`}
+      >
+        <Star className="h-7 w-7 fill-current" />
+      </button>
+    ))}
+  </div>
+);
+
 const PartnerDashboard = () => {
   const { user } = useAuth();
   const [sales, setSales] = useState<SalesRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(true);
   const [formData, setFormData] = useState({
     productName: '',
     quantity: '',
@@ -37,6 +70,7 @@ const PartnerDashboard = () => {
     profit: '',
     date: new Date().toISOString().split('T')[0],
   });
+  const [feedbackData, setFeedbackData] = useState(defaultFeedback);
 
   useEffect(() => {
     fetchHistory();
@@ -79,6 +113,33 @@ const PartnerDashboard = () => {
         profit: parseFloat(formData.profit),
       });
 
+      // Submit customer feedback if the section is filled
+      const hasFeedback =
+        feedbackData.totalCustomers !== '' &&
+        feedbackData.satisfiedCustomers !== '' &&
+        feedbackData.overallRating > 0;
+
+      if (hasFeedback) {
+        try {
+          await submitCustomerFeedback({
+            date: formData.date,
+            totalCustomers: parseInt(feedbackData.totalCustomers, 10),
+            satisfiedCustomers: parseInt(feedbackData.satisfiedCustomers, 10),
+            overallRating: feedbackData.overallRating,
+            complaints: feedbackData.complaints.trim() || undefined,
+            highlights: feedbackData.highlights.trim() || undefined,
+          });
+          toast.success('Sales record & customer feedback submitted!');
+        } catch (fbErr: any) {
+          // Record saved but feedback failed — warn but don't block
+          toast.warning('Sales record saved. Customer feedback could not be submitted.');
+          console.error('Feedback submit error:', fbErr);
+        }
+      } else {
+        toast.success('Sales record submitted successfully');
+      }
+
+      // Reset forms
       setFormData({
         productName: '',
         quantity: '',
@@ -86,7 +147,7 @@ const PartnerDashboard = () => {
         profit: '',
         date: new Date().toISOString().split('T')[0],
       });
-      toast.success('Sales record submitted successfully');
+      setFeedbackData(defaultFeedback);
       fetchHistory();
     } catch (err: any) {
       console.error('Submit error:', err);
@@ -118,6 +179,15 @@ const PartnerDashboard = () => {
   const totalRevenue = sales.reduce((sum, r) => sum + Number(r.sales_amount), 0);
   const totalProfit = sales.reduce((sum, r) => sum + Number(r.profit), 0);
   const totalRecords = sales.length;
+
+  const satisfactionPct =
+    feedbackData.totalCustomers && feedbackData.satisfiedCustomers
+      ? Math.round(
+        (parseInt(feedbackData.satisfiedCustomers, 10) /
+          parseInt(feedbackData.totalCustomers, 10)) *
+        100
+      )
+      : null;
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -178,98 +248,232 @@ const PartnerDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        {/* Sales Entry Form */}
-        <Card className="xl:col-span-1 border-none shadow-lg h-fit sticky top-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <Plus className="text-primary h-5 w-5" />
-              New Sales Entry
-            </CardTitle>
-            <CardDescription>Enter today's sales data for your branch</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="product" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Product / Category</Label>
-                <Input
-                  id="product"
-                  required
-                  value={formData.productName}
-                  onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                  placeholder="e.g. Electronics, Clothing"
-                  className="h-11 shadow-sm"
-                />
-              </div>
+        {/* Left column: Sales form + Customer Feedback */}
+        <div className="xl:col-span-1 flex flex-col gap-6">
+          {/* Sales Entry Form */}
+          <Card className="border-none shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <Plus className="text-primary h-5 w-5" />
+                New Sales Entry
+              </CardTitle>
+              <CardDescription>Enter today's sales data for your branch</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form id="sales-form" onSubmit={handleSubmit} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="product" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Product / Category</Label>
+                  <Input
+                    id="product"
+                    required
+                    value={formData.productName}
+                    onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
+                    placeholder="e.g. Electronics, Clothing"
+                    className="h-11 shadow-sm"
+                  />
+                </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="quantity" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Quantity</Label>
-                  <Input
-                    id="quantity"
-                    type="number"
-                    min="1"
-                    required
-                    value={formData.quantity}
-                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                    placeholder="25"
-                    className="h-11 shadow-sm"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="quantity" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Quantity</Label>
+                    <Input
+                      id="quantity"
+                      type="number"
+                      min="1"
+                      required
+                      value={formData.quantity}
+                      onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                      placeholder="25"
+                      className="h-11 shadow-sm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="date" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Sale Date</Label>
+                    <Input
+                      id="date"
+                      type="date"
+                      required
+                      value={formData.date}
+                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                      className="h-11 shadow-sm"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="date" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Sale Date</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    required
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="h-11 shadow-sm"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="revenue" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Sales Amount (₹)</Label>
-                  <Input
-                    id="revenue"
-                    type="number"
-                    required
-                    step="0.01"
-                    min="0"
-                    value={formData.salesAmount}
-                    onChange={(e) => setFormData({ ...formData, salesAmount: e.target.value })}
-                    placeholder="1200.00"
-                    className="h-11 shadow-sm"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="revenue" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Sales Amount (₹)</Label>
+                    <Input
+                      id="revenue"
+                      type="number"
+                      required
+                      step="0.01"
+                      min="0"
+                      value={formData.salesAmount}
+                      onChange={(e) => setFormData({ ...formData, salesAmount: e.target.value })}
+                      placeholder="1200.00"
+                      className="h-11 shadow-sm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="profit" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Profit (₹)</Label>
+                    <Input
+                      id="profit"
+                      type="number"
+                      required
+                      step="0.01"
+                      value={formData.profit}
+                      onChange={(e) => setFormData({ ...formData, profit: e.target.value })}
+                      placeholder="350.00"
+                      className="h-11 shadow-sm"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="profit" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Profit (₹)</Label>
-                  <Input
-                    id="profit"
-                    type="number"
-                    required
-                    step="0.01"
-                    value={formData.profit}
-                    onChange={(e) => setFormData({ ...formData, profit: e.target.value })}
-                    placeholder="350.00"
-                    className="h-11 shadow-sm"
-                  />
-                </div>
-              </div>
+              </form>
+            </CardContent>
+          </Card>
 
-              <Button
-                type="submit"
-                size="lg"
-                disabled={submitting}
-                className="w-full shadow-lg shadow-primary/20 transition-all active:scale-95 py-6 text-lg font-bold"
-              >
-                {submitting ? <span className="animate-spin">⏳</span> : <Save className="mr-2 h-5 w-5" />}
-                Submit Record
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+          {/* Daily Customer Feedback Card */}
+          <Card className="border-none shadow-lg">
+            <CardHeader
+              className="cursor-pointer select-none"
+              onClick={() => setShowFeedback((v) => !v)}
+            >
+              <CardTitle className="flex items-center justify-between text-xl">
+                <span className="flex items-center gap-2">
+                  <MessageSquare className="text-primary h-5 w-5" />
+                  Daily Customer Feedback
+                </span>
+                {showFeedback ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </CardTitle>
+              <CardDescription>Optional — share today's customer insights</CardDescription>
+            </CardHeader>
+
+            {showFeedback && (
+              <CardContent className="space-y-5">
+                {/* Customer counts */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="totalCustomers" className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                      <Users className="h-3 w-3" /> Total Customers
+                    </Label>
+                    <Input
+                      id="totalCustomers"
+                      type="number"
+                      min="0"
+                      value={feedbackData.totalCustomers}
+                      onChange={(e) => setFeedbackData({ ...feedbackData, totalCustomers: e.target.value })}
+                      placeholder="120"
+                      className="h-11 shadow-sm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="satisfiedCustomers" className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                      <ThumbsUp className="h-3 w-3" /> Satisfied
+                    </Label>
+                    <Input
+                      id="satisfiedCustomers"
+                      type="number"
+                      min="0"
+                      value={feedbackData.satisfiedCustomers}
+                      onChange={(e) => setFeedbackData({ ...feedbackData, satisfiedCustomers: e.target.value })}
+                      placeholder="105"
+                      className="h-11 shadow-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Live satisfaction indicator */}
+                {satisfactionPct !== null && !isNaN(satisfactionPct) && (
+                  <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-muted/40">
+                    <div
+                      className={`text-lg font-bold ${satisfactionPct >= 80
+                          ? 'text-green-500'
+                          : satisfactionPct >= 60
+                            ? 'text-yellow-500'
+                            : 'text-red-500'
+                        }`}
+                    >
+                      {satisfactionPct}%
+                    </div>
+                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${satisfactionPct >= 80
+                            ? 'bg-green-500'
+                            : satisfactionPct >= 60
+                              ? 'bg-yellow-500'
+                              : 'bg-red-500'
+                          }`}
+                        style={{ width: `${Math.min(satisfactionPct, 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-muted-foreground">satisfaction</span>
+                  </div>
+                )}
+
+                {/* Star rating */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                    <Star className="h-3 w-3" /> Overall Rating
+                  </Label>
+                  <StarRating
+                    value={feedbackData.overallRating}
+                    onChange={(v) => setFeedbackData({ ...feedbackData, overallRating: v })}
+                  />
+                  {feedbackData.overallRating > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'][feedbackData.overallRating]}
+                    </p>
+                  )}
+                </div>
+
+                {/* Highlights */}
+                <div className="space-y-2">
+                  <Label htmlFor="highlights" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Highlights / Positives
+                  </Label>
+                  <Textarea
+                    id="highlights"
+                    value={feedbackData.highlights}
+                    onChange={(e) => setFeedbackData({ ...feedbackData, highlights: e.target.value })}
+                    placeholder="What went well today?"
+                    className="resize-none min-h-[70px] shadow-sm"
+                  />
+                </div>
+
+                {/* Complaints */}
+                <div className="space-y-2">
+                  <Label htmlFor="complaints" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Complaints / Issues
+                  </Label>
+                  <Textarea
+                    id="complaints"
+                    value={feedbackData.complaints}
+                    onChange={(e) => setFeedbackData({ ...feedbackData, complaints: e.target.value })}
+                    placeholder="Any customer complaints or issues?"
+                    className="resize-none min-h-[70px] shadow-sm"
+                  />
+                </div>
+              </CardContent>
+            )}
+          </Card>
+
+          {/* Submit Button — outside both cards, submits the whole form */}
+          <Button
+            type="submit"
+            form="sales-form"
+            size="lg"
+            disabled={submitting}
+            className="w-full shadow-lg shadow-primary/20 transition-all active:scale-95 py-6 text-lg font-bold"
+          >
+            {submitting ? <span className="animate-spin">⏳</span> : <Save className="mr-2 h-5 w-5" />}
+            Submit Record
+          </Button>
+        </div>
 
         {/* Sales History Table */}
         <Card className="xl:col-span-2 border-none shadow-lg overflow-hidden">

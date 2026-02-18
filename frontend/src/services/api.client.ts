@@ -24,6 +24,9 @@ apiClient.interceptors.request.use(
     }
 );
 
+// Flag to prevent multiple simultaneous redirects
+let isRedirecting = false;
+
 // Response interceptor for error handling
 apiClient.interceptors.response.use(
     (response) => response,
@@ -35,10 +38,18 @@ apiClient.interceptors.response.use(
             const errorMessage = apiError?.error || apiError?.message || 'An error occurred';
 
             // Handle 401 Unauthorized - clear auth and redirect to login
-            if (error.response.status === 401) {
+            if (error.response.status === 401 && !isRedirecting) {
+                isRedirecting = true;
                 localStorage.removeItem('auth_token');
-                localStorage.removeItem('user');
-                window.location.href = '/';
+                localStorage.removeItem('auth_user');
+
+                // Only redirect if not already on login page
+                if (window.location.pathname !== '/login') {
+                    window.location.href = '/login';
+                }
+
+                // Reset flag after a delay to allow for navigation
+                setTimeout(() => { isRedirecting = false; }, 1000);
             }
 
             return Promise.reject(new Error(errorMessage));

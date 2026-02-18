@@ -18,7 +18,7 @@ class AuthService {
         // Store token and user in localStorage
         if (response.data.token) {
             localStorage.setItem('auth_token', response.data.token);
-            localStorage.setItem('user', JSON.stringify(response.data.user));
+            localStorage.setItem('auth_user', JSON.stringify(response.data.user));
         }
 
         return response.data;
@@ -33,7 +33,7 @@ class AuthService {
         // Store token and user in localStorage
         if (response.data.token) {
             localStorage.setItem('auth_token', response.data.token);
-            localStorage.setItem('user', JSON.stringify(response.data.user));
+            localStorage.setItem('auth_user', JSON.stringify(response.data.user));
         }
 
         return response.data;
@@ -44,14 +44,14 @@ class AuthService {
      */
     logout(): void {
         localStorage.removeItem('auth_token');
-        localStorage.removeItem('user');
+        localStorage.removeItem('auth_user');
     }
 
     /**
      * Get current user from localStorage
      */
     getCurrentUser(): User | null {
-        const userStr = localStorage.getItem('user');
+        const userStr = localStorage.getItem('auth_user');
         if (!userStr) return null;
 
         try {

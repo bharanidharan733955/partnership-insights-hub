@@ -9,6 +9,7 @@ import {
   Shield,
   LogOut,
   BarChart3,
+  MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -66,18 +67,48 @@ export function AppSidebar() {
           {!collapsed && <span className="flex-1">Dashboard</span>}
         </NavLink>
         {user.role === 'analyst' && (
+          <>
+            <NavLink
+              to="/analytics"
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+                location.pathname === '/analytics'
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+                collapsed && 'justify-center px-2'
+              )}
+            >
+              <BarChart3 className="w-5 h-5 flex-shrink-0" />
+              {!collapsed && <span className="flex-1">Analytics</span>}
+            </NavLink>
+            <NavLink
+              to="/feedback"
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+                location.pathname === '/feedback'
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+                collapsed && 'justify-center px-2'
+              )}
+            >
+              <MessageSquare className="w-5 h-5 flex-shrink-0" />
+              {!collapsed && <span className="flex-1">Feedback</span>}
+            </NavLink>
+          </>
+        )}
+        {user.role === 'partner' && (
           <NavLink
-            to="/analytics"
+            to="/my-feedback"
             className={cn(
               'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
-              location.pathname === '/analytics'
+              location.pathname === '/my-feedback'
                 ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                 : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
               collapsed && 'justify-center px-2'
             )}
           >
-            <BarChart3 className="w-5 h-5 flex-shrink-0" />
-            {!collapsed && <span className="flex-1">Analytics</span>}
+            <MessageSquare className="w-5 h-5 flex-shrink-0" />
+            {!collapsed && <span className="flex-1">My Feedback</span>}
           </NavLink>
         )}
       </nav>

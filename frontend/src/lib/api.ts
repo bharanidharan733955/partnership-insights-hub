@@ -38,3 +38,14 @@ export async function submitSales(data: {
 }) {
   return partnershipService.submitSales(data);
 }
+
+export async function submitCustomerFeedback(data: {
+  date: string;
+  totalCustomers: number;
+  satisfiedCustomers: number;
+  overallRating: number;
+  complaints?: string;
+  highlights?: string;
+}) {
+  return partnershipService.submitCustomerFeedback(data);
+}

@@ -215,67 +215,322 @@ const AnalystDashboard = () => {
       return;
     }
     try {
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const pageW = doc.internal.pageSize.getWidth();
-      const margin = 15;
-      const colW = (pageW - margin * 2) / 8;
-      let y = 20;
+      toast.info('Generating PDF…');
 
-      doc.setFontSize(16);
-      doc.text('Sales Analytics Report', margin, y);
-      y += 8;
-      doc.setFontSize(10);
-      doc.setTextColor(100, 100, 100);
-      doc.text(`Generated: ${new Date().toLocaleDateString()} | Records: ${filteredSales.length}`, margin, y);
-      y += 12;
+      // ── Helpers ────────────────────────────────────────────────────────────
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const PW = doc.internal.pageSize.getWidth();   // 297
+      const PH = doc.internal.pageSize.getHeight();  // 210
+      const ML = 14;
+      const MR = 14;
+      const usableW = PW - ML - MR;
 
-      doc.setFontSize(10);
-      doc.setTextColor(0, 0, 0);
-      doc.text(`Total Revenue (INR): ${totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, margin, y);
-      y += 6;
-      doc.text(`Total Profit (INR): ${totalProfit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, margin, y);
-      y += 12;
+      let pageNum = 1;
+      let y = 18;
+      let cx = ML;
 
-      const headers = ['Date', 'Partner', 'Branch', 'Location', 'Product', 'Qty', 'Sales (INR)', 'Profit (INR)'];
-      doc.setFontSize(9);
-      doc.setFont(undefined, 'bold');
-      headers.forEach((h, i) => doc.text(h, margin + i * colW, y));
-      y += 8;
-      doc.setFont(undefined, 'normal');
+      const addPageNumber = () => {
+        doc.setFontSize(8);
+        doc.setTextColor(160, 160, 160);
+        doc.text(`Page ${pageNum}`, PW - MR, PH - 6, { align: 'right' });
+        doc.text('Partnership Insights Hub — Confidential', ML, PH - 6);
+      };
 
-      filteredSales.forEach((r) => {
-        if (y > 270) {
-          doc.addPage();
-          y = 20;
+      const newPage = () => {
+        addPageNumber();
+        doc.addPage();
+        pageNum++;
+      };
+
+      const drawHRule = (ry: number, color: [number, number, number] = [220, 220, 220]) => {
+        doc.setDrawColor(...color);
+        doc.line(ML, ry, PW - MR, ry);
+      };
+
+      const fmt = (n: number) =>
+        n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      const pct = (num: number, den: number) =>
+        den === 0 ? '0.00%' : `${((num / den) * 100).toFixed(2)}%`;
+
+      // ── Derived data ───────────────────────────────────────────────────────
+      const profitMargin = totalRevenue === 0 ? 0 : (totalProfit / totalRevenue) * 100;
+      const avgSalePerRecord = filteredSales.length === 0 ? 0 : totalRevenue / filteredSales.length;
+      const totalQty = filteredSales.reduce((s, r) => s + Number(r.quantity), 0);
+
+      const branchMap: Record<string, { name: string; location: string; partner: string; revenue: number; profit: number; qty: number; count: number }> = {};
+      filteredSales.forEach(r => {
+        const bid = r.branch_id;
+        if (!branchMap[bid]) {
+          branchMap[bid] = { name: r.branches?.name || bid, location: r.branches?.location || '', partner: r.branches?.partners?.name || '', revenue: 0, profit: 0, qty: 0, count: 0 };
         }
-        const row = [
-          r.date,
-          (r.branches?.partners?.name || '-').substring(0, 12),
-          (r.branches?.name || '-').substring(0, 10),
-          (r.branches?.location || '-').substring(0, 10),
-          (r.product_name || '-').substring(0, 12),
-          String(r.quantity),
-          Number(r.sales_amount).toFixed(0),
-          Number(r.profit).toFixed(0),
+        branchMap[bid].revenue += Number(r.sales_amount);
+        branchMap[bid].profit += Number(r.profit);
+        branchMap[bid].qty += Number(r.quantity);
+        branchMap[bid].count++;
+      });
+      const branchRows = Object.values(branchMap).sort((a, b) => b.revenue - a.revenue);
+
+      const productMap: Record<string, { revenue: number; profit: number; qty: number; count: number }> = {};
+      filteredSales.forEach(r => {
+        const p = r.product_name || 'Unknown';
+        if (!productMap[p]) productMap[p] = { revenue: 0, profit: 0, qty: 0, count: 0 };
+        productMap[p].revenue += Number(r.sales_amount);
+        productMap[p].profit += Number(r.profit);
+        productMap[p].qty += Number(r.quantity);
+        productMap[p].count++;
+      });
+      const productRows = Object.entries(productMap).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.revenue - a.revenue);
+
+      const dates = filteredSales.map(r => r.date).sort();
+      const dateRange = dates.length > 0 ? `${dates[0]} to ${dates[dates.length - 1]}` : 'All dates';
+
+      // ── PAGE 1: Cover + Executive Summary ─────────────────────────────────
+      doc.setFillColor(30, 41, 59);
+      doc.rect(0, 0, PW, 14, 'F');
+      doc.setFontSize(11);
+      doc.setTextColor(255, 255, 255);
+      doc.setFont(undefined, 'bold');
+      doc.text('PARTNERSHIP INSIGHTS HUB', ML, 9);
+      doc.setFont(undefined, 'normal');
+      doc.setFontSize(9);
+      doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, PW - MR, 9, { align: 'right' });
+
+      y = 24;
+      doc.setFontSize(20);
+      doc.setTextColor(30, 41, 59);
+      doc.setFont(undefined, 'bold');
+      doc.text('Sales Analytics Report', ML, y);
+      y += 7;
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Period: ${dateRange}  |  Records: ${filteredSales.length}  |  Branches: ${uniqueBranches}`, ML, y);
+      y += 4;
+      drawHRule(y, [148, 163, 184]);
+      y += 8;
+
+      // 4 metric boxes
+      const boxW = (usableW - 9) / 4;
+      const boxes = [
+        { label: 'Total Revenue', value: `INR ${fmt(totalRevenue)}`, sub: `Avg/record: INR ${fmt(avgSalePerRecord)}` },
+        { label: 'Total Profit', value: `INR ${fmt(totalProfit)}`, sub: `Margin: ${profitMargin.toFixed(2)}%` },
+        { label: 'Active Branches', value: String(uniqueBranches), sub: `${filteredSales.length} total records` },
+        { label: 'Total Quantity', value: String(totalQty), sub: `${productRows.length} products` },
+      ];
+      boxes.forEach((box, i) => {
+        const bx = ML + i * (boxW + 3);
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(bx, y, boxW, 22, 2, 2, 'FD');
+        doc.setFontSize(8);
+        doc.setTextColor(100, 116, 139);
+        doc.setFont(undefined, 'normal');
+        doc.text(box.label, bx + 4, y + 6);
+        doc.setFontSize(12);
+        doc.setTextColor(15, 23, 42);
+        doc.setFont(undefined, 'bold');
+        doc.text(box.value, bx + 4, y + 14);
+        doc.setFontSize(7.5);
+        doc.setFont(undefined, 'normal');
+        doc.setTextColor(100, 116, 139);
+        doc.text(box.sub, bx + 4, y + 20);
+      });
+      y += 30;
+
+      // ── Branch Breakdown Table ─────────────────────────────────────────────
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(30, 41, 59);
+      doc.text('Branch Performance Breakdown', ML, y);
+      y += 5;
+      drawHRule(y, [148, 163, 184]);
+      y += 5;
+
+      const bCols = [
+        { label: 'Branch', w: 42 },
+        { label: 'Location', w: 36 },
+        { label: 'Partner', w: 36 },
+        { label: 'Records', w: 20 },
+        { label: 'Total Qty', w: 22 },
+        { label: 'Revenue (INR)', w: 44 },
+        { label: 'Profit (INR)', w: 40 },
+        { label: 'Margin %', w: 29 },
+      ];
+
+      doc.setFillColor(30, 41, 59);
+      doc.rect(ML, y, usableW, 7, 'F');
+      doc.setFontSize(8);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(255, 255, 255);
+      cx = ML + 2;
+      bCols.forEach(col => { doc.text(col.label, cx, y + 5); cx += col.w; });
+      y += 7;
+
+      doc.setFont(undefined, 'normal');
+      branchRows.forEach((row, idx) => {
+        if (y > PH - 20) { newPage(); y = 20; }
+        if (idx % 2 === 0) { doc.setFillColor(248, 250, 252); doc.rect(ML, y, usableW, 6.5, 'F'); }
+        doc.setTextColor(15, 23, 42);
+        doc.setFontSize(8);
+        cx = ML + 2;
+        const cells = [
+          doc.splitTextToSize(row.name, bCols[0].w - 3)[0],
+          doc.splitTextToSize(row.location, bCols[1].w - 3)[0],
+          doc.splitTextToSize(row.partner, bCols[2].w - 3)[0],
+          String(row.count),
+          String(row.qty),
+          fmt(row.revenue),
+          fmt(row.profit),
+          pct(row.profit, row.revenue),
         ];
-        row.forEach((cell, i) => doc.text(String(cell).substring(0, 15), margin + i * colW, y));
+        cells.forEach((cell, i) => { doc.text(String(cell), cx, y + 4.5); cx += bCols[i].w; });
+        y += 6.5;
+      });
+
+      // Totals row
+      doc.setFillColor(241, 245, 249);
+      doc.rect(ML, y, usableW, 7, 'F');
+      doc.setFont(undefined, 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(30, 41, 59);
+      cx = ML + 2;
+      ['TOTAL', '', '', String(filteredSales.length), String(totalQty), fmt(totalRevenue), fmt(totalProfit), `${profitMargin.toFixed(2)}%`]
+        .forEach((cell, i) => { doc.text(cell, cx, y + 5); cx += bCols[i].w; });
+      y += 12;
+
+      // ── Product Summary Table ──────────────────────────────────────────────
+      if (y > PH - 50) { newPage(); y = 20; }
+
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(30, 41, 59);
+      doc.text('Product Performance Summary', ML, y);
+      y += 5;
+      drawHRule(y, [148, 163, 184]);
+      y += 5;
+
+      const pCols = [
+        { label: 'Product', w: 72 },
+        { label: 'Records', w: 25 },
+        { label: 'Total Qty', w: 28 },
+        { label: 'Revenue (INR)', w: 55 },
+        { label: 'Profit (INR)', w: 50 },
+        { label: 'Margin %', w: 28 },
+        { label: '% of Revenue', w: 35 },
+      ];
+
+      doc.setFillColor(30, 41, 59);
+      doc.rect(ML, y, usableW, 7, 'F');
+      doc.setFontSize(8);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(255, 255, 255);
+      cx = ML + 2;
+      pCols.forEach(col => { doc.text(col.label, cx, y + 5); cx += col.w; });
+      y += 7;
+
+      doc.setFont(undefined, 'normal');
+      productRows.forEach((row, idx) => {
+        if (y > PH - 20) { newPage(); y = 20; }
+        if (idx % 2 === 0) { doc.setFillColor(248, 250, 252); doc.rect(ML, y, usableW, 6.5, 'F'); }
+        doc.setTextColor(15, 23, 42);
+        doc.setFontSize(8);
+        cx = ML + 2;
+        [
+          doc.splitTextToSize(row.name, pCols[0].w - 3)[0],
+          String(row.count),
+          String(row.qty),
+          fmt(row.revenue),
+          fmt(row.profit),
+          pct(row.profit, row.revenue),
+          pct(row.revenue, totalRevenue),
+        ].forEach((cell, i) => { doc.text(String(cell), cx, y + 4.5); cx += pCols[i].w; });
+        y += 6.5;
+      });
+      y += 6;
+
+      // ── PAGE 2+: Full Transaction Log ──────────────────────────────────────
+      newPage();
+      y = 18;
+
+      doc.setFillColor(30, 41, 59);
+      doc.rect(0, 0, PW, 14, 'F');
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('PARTNERSHIP INSIGHTS HUB — Transaction Log', ML, 9);
+      doc.setFont(undefined, 'normal');
+      doc.setFontSize(9);
+      doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, PW - MR, 9, { align: 'right' });
+
+      y = 22;
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(30, 41, 59);
+      doc.text('Detailed Transaction Records', ML, y);
+      y += 5;
+      drawHRule(y, [148, 163, 184]);
+      y += 5;
+
+      const tCols = [
+        { label: 'Date', w: 24 },
+        { label: 'Partner', w: 38 },
+        { label: 'Branch', w: 36 },
+        { label: 'Location', w: 34 },
+        { label: 'Product', w: 50 },
+        { label: 'Qty', w: 16 },
+        { label: 'Revenue (INR)', w: 40 },
+        { label: 'Profit (INR)', w: 36 },
+        { label: 'Margin %', w: 22 },
+      ];
+
+      const drawTxHeader = () => {
+        doc.setFillColor(30, 41, 59);
+        doc.rect(ML, y, usableW, 7, 'F');
+        doc.setFontSize(8);
+        doc.setFont(undefined, 'bold');
+        doc.setTextColor(255, 255, 255);
+        cx = ML + 2;
+        tCols.forEach(col => { doc.text(col.label, cx, y + 5); cx += col.w; });
+      };
+
+      drawTxHeader();
+      y += 7;
+
+      doc.setFont(undefined, 'normal');
+      filteredSales.forEach((r, idx) => {
+        if (y > PH - 16) { newPage(); y = 20; drawTxHeader(); y += 7; }
+        if (idx % 2 === 0) { doc.setFillColor(248, 250, 252); doc.rect(ML, y, usableW, 6, 'F'); }
+        doc.setTextColor(15, 23, 42);
+        doc.setFontSize(7.5);
+        cx = ML + 2;
+        const rowMargin = Number(r.sales_amount) === 0 ? '0.00%' : `${((Number(r.profit) / Number(r.sales_amount)) * 100).toFixed(2)}%`;
+        [
+          r.date,
+          doc.splitTextToSize(r.branches?.partners?.name || '—', tCols[1].w - 3)[0],
+          doc.splitTextToSize(r.branches?.name || '—', tCols[2].w - 3)[0],
+          doc.splitTextToSize(r.branches?.location || '—', tCols[3].w - 3)[0],
+          doc.splitTextToSize(r.product_name || '—', tCols[4].w - 3)[0],
+          String(r.quantity),
+          fmt(Number(r.sales_amount)),
+          fmt(Number(r.profit)),
+          rowMargin,
+        ].forEach((cell, i) => { doc.text(String(cell), cx, y + 4); cx += tCols[i].w; });
         y += 6;
       });
 
-      if (chartRef.current) {
-        try {
-          const canvas = await html2canvas(chartRef.current, { scale: 2, useCORS: true, logging: false });
-          const imgData = canvas.toDataURL('image/png');
-          doc.addPage('a4', 'landscape');
-          const imgW = doc.internal.pageSize.getWidth();
-          const imgH = (canvas.height * imgW) / canvas.width;
-          doc.addImage(imgData, 'PNG', 10, 15, Math.min(imgW - 20, 270), Math.min(imgH, 170));
-        } catch {
-          doc.addPage();
-          doc.text('Revenue & Profit Chart (see dashboard)', margin, 30);
-        }
-      }
+      // Final totals
+      if (y > PH - 16) { newPage(); y = 20; }
+      doc.setFillColor(30, 41, 59);
+      doc.rect(ML, y, usableW, 7, 'F');
+      doc.setFont(undefined, 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(255, 255, 255);
+      cx = ML + 2;
+      ['TOTAL', '', '', '', `${filteredSales.length} records`, String(totalQty), fmt(totalRevenue), fmt(totalProfit), `${profitMargin.toFixed(2)}%`]
+        .forEach((cell, i) => { doc.text(cell, cx, y + 5); cx += tCols[i].w; });
 
+      addPageNumber();
       doc.save(`sales_report_${new Date().toISOString().split('T')[0]}.pdf`);
       toast.success('PDF report downloaded');
     } catch (err: any) {

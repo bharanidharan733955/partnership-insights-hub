@@ -4,9 +4,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { ThemeProvider } from "./components/theme-provider";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import AnalyticsPage from "./pages/AnalyticsPage";
+import FeedbackPage from "./pages/FeedbackPage";
+import PartnerFeedbackView from "./pages/PartnerFeedbackView";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -50,6 +53,22 @@ const AppContent = () => (
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/feedback"
+        element={
+          <ProtectedRoute>
+            <FeedbackPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/my-feedback"
+        element={
+          <ProtectedRoute>
+            <PartnerFeedbackView />
+          </ProtectedRoute>
+        }
+      />
       <Route path="*" element={<NotFound />} />
     </Routes>
   </BrowserRouter>
@@ -57,13 +76,15 @@ const AppContent = () => (
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <AppContent />
-      </TooltipProvider>
-    </AuthProvider>
+    <ThemeProvider defaultTheme="system" storageKey="partnership-hub-theme">
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <AppContent />
+        </TooltipProvider>
+      </AuthProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

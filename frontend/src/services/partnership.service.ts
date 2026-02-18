@@ -37,6 +37,21 @@ class PartnershipService {
     }
 
     /**
+     * Submit daily customer feedback (PARTNER / manager)
+     */
+    async submitCustomerFeedback(data: {
+        date: string;
+        totalCustomers: number;
+        satisfiedCustomers: number;
+        overallRating: number;
+        complaints?: string;
+        highlights?: string;
+    }): Promise<any> {
+        const response = await apiClient.post('/feedback/customer', data);
+        return response.data;
+    }
+
+    /**
      * Get all partners (analyst only)
      */
     async getPartners(): Promise<Partner[]> {

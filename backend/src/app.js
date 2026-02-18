@@ -4,6 +4,8 @@ const authRoutes = require('./routes/authRoutes');
 const partnerRoutes = require('./routes/partnerRoutes');
 const salesRoutes = require('./routes/salesRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const feedbackRoutes = require('./routes/feedbackRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 const app = express();
 
@@ -17,5 +19,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/partners', partnerRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/feedback', feedbackRoutes);
+app.use('/api/reports', reportRoutes);
 
 module.exports = app;
