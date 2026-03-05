@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Lock, Mail, Loader2, ShieldCheck, ArrowRight, User, MapPin, Building2 } from 'lucide-react';
+import { Lock, Mail, Loader2, ShieldCheck, ArrowRight, User, MapPin, Building2, Chrome } from 'lucide-react';
+import { GoogleLogin } from '@react-oauth/google';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const { signIn, signUp, user } = useAuth();
+  const { signIn, signUp, googleSignIn, user } = useAuth();
 
   useEffect(() => {
     if (user) navigate('/');
@@ -32,6 +33,20 @@ const Login = () => {
       await signIn(email, password);
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    setLoading(true);
+    setError('');
+    try {
+      if (credentialResponse.credential) {
+        await googleSignIn(credentialResponse.credential);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Google login failed. Please ensure you have an existing account.');
     } finally {
       setLoading(false);
     }
@@ -123,6 +138,27 @@ const Login = () => {
                     <><span>Sign In</span><ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" /></>
                   )}
                 </Button>
+
+                <div className="relative my-6">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-muted" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground font-semibold tracking-wider">Or continue with</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-center">
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={() => setError('Google Login Failed')}
+                    useOneTap
+                    theme="filled_blue"
+                    shape="pill"
+                    text="signin_with"
+                    width="100%"
+                  />
+                </div>
               </form>
             </TabsContent>
 

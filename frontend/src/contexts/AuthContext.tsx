@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authLogin, authRegister } from '@/lib/api';
+import { authLogin, authRegister, authGoogleLogin } from '@/lib/api';
 
 export type AppRole = 'analyst' | 'partner';
 
@@ -28,6 +28,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (data: SignUpData) => Promise<void>;
+  googleSignIn: (idToken: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -69,6 +70,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(normalized);
   };
 
+  const googleSignIn = async (idToken: string) => {
+    const { user: u, token } = await authGoogleLogin(idToken);
+    const normalized = normalizeUser(u);
+    localStorage.setItem(AUTH_TOKEN, token);
+    localStorage.setItem(AUTH_USER, JSON.stringify(normalized));
+    setUser(normalized);
+  };
+
   const signOut = async () => {
     localStorage.removeItem(AUTH_TOKEN);
     localStorage.removeItem(AUTH_USER);
@@ -76,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, googleSignIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

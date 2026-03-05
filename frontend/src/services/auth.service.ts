@@ -25,6 +25,23 @@ class AuthService {
     }
 
     /**
+     * Login user with Google ID token
+     */
+    async googleLogin(idToken: string): Promise<LoginResponse> {
+        const response = await apiClient.post<LoginResponse>('/auth/google-login', {
+            idToken,
+        });
+
+        // Store token and user in localStorage
+        if (response.data.token) {
+            localStorage.setItem('auth_token', response.data.token);
+            localStorage.setItem('auth_user', JSON.stringify(response.data.user));
+        }
+
+        return response.data;
+    }
+
+    /**
      * Register new partner user
      */
     async register(data: RegisterRequest): Promise<LoginResponse> {

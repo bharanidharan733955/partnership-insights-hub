@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { MessageSquare, TrendingUp, TrendingDown } from 'lucide-react';
+import { MessageSquare, TrendingUp, TrendingDown, ArrowLeft } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { useNavigate } from 'react-router-dom';
 import { feedbackService } from '@/services';
 import { FeedbackCard } from '@/components/feedback/FeedbackCard';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,6 +11,7 @@ import type { Feedback, FeedbackStats } from '@/types/feedback.types';
 
 export default function PartnerFeedbackView() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [feedback, setFeedback] = useState<Feedback[]>([]);
     const [stats, setStats] = useState<FeedbackStats | null>(null);
     const [loading, setLoading] = useState(true);
@@ -67,11 +70,21 @@ export default function PartnerFeedbackView() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div>
-                <h1 className="text-3xl font-bold">My Feedback</h1>
-                <p className="text-muted-foreground">
-                    View feedback and recommendations from analysts
-                </p>
+            <div className="flex flex-col gap-4">
+                <Button
+                    variant="ghost"
+                    className="w-fit -ml-2 text-muted-foreground hover:text-foreground"
+                    onClick={() => navigate(-1)}
+                >
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Back
+                </Button>
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">My Feedback</h1>
+                    <p className="text-muted-foreground text-lg">
+                        View feedback and recommendations from analysts
+                    </p>
+                </div>
             </div>
 
             {/* Stats Cards */}

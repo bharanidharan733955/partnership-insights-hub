@@ -60,23 +60,17 @@ async function main() {
         },
     });
 
-    // 5. Add some sample sales
-    const today = new Date();
-    for (let i = 0; i < 7; i++) {
-        const date = new Date();
-        date.setDate(today.getDate() - i);
-
-        await prisma.salesRecord.create({
-            data: {
-                date,
-                productName: 'Enterprise Suite',
-                quantity: Math.floor(Math.random() * 10) + 1,
-                salesAmount: Math.random() * 5000 + 1000,
-                profit: Math.random() * 1000 + 200,
-                branchId: b1.id,
-            },
-        });
-    }
+    // 5. Add one sample sales record
+    await prisma.salesRecord.create({
+        data: {
+            date: new Date(),
+            productName: 'Sample Product',
+            quantity: 5,
+            salesAmount: 1500,
+            profit: 300,
+            branchId: b1.id,
+        },
+    });
 
     console.log('Database seeded successfully');
 }

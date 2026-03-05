@@ -16,6 +16,10 @@ export async function authRegister(data: {
   return authService.register(data);
 }
 
+export async function authGoogleLogin(idToken: string) {
+  return authService.googleLogin(idToken);
+}
+
 export async function getSalesHistory(params?: {
   partnerId?: string;
   branchId?: string;
