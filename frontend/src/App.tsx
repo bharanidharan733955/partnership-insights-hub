@@ -9,8 +9,8 @@ import { ThemeProvider } from "./components/theme-provider";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import AnalyticsPage from "./pages/AnalyticsPage";
-import FeedbackPage from "./pages/FeedbackPage";
-import PartnerFeedbackView from "./pages/PartnerFeedbackView";
+import DailyFeedbackPage from "./pages/DailyFeedbackPage";
+import PartnerSalesHistoryPage from "./pages/PartnerSalesHistoryPage";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -58,18 +58,18 @@ const AppContent = () => (
         }
       />
       <Route
-        path="/feedback"
+        path="/sales-history"
         element={
           <ProtectedRoute>
-            <FeedbackPage />
+            <PartnerSalesHistoryPage />
           </ProtectedRoute>
         }
       />
       <Route
-        path="/my-feedback"
+        path="/daily-feedback"
         element={
           <ProtectedRoute>
-            <PartnerFeedbackView />
+            <DailyFeedbackPage />
           </ProtectedRoute>
         }
       />

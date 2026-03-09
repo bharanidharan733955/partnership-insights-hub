@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getSalesHistory, submitSales, submitCustomerFeedback } from '@/lib/api';
 import {
-  Plus, History, Save, Calendar, TrendingUp, AlertCircle, DollarSign, Package, BarChart3,
-  Users, Star, MessageSquare, ChevronDown, ChevronUp, ThumbsUp,
+  Plus, Save, Calendar, TrendingUp, AlertCircle, DollarSign, Package,
+  MessageSquare, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,35 +27,19 @@ interface SalesRecord {
   created_at: string;
 }
 
-const defaultFeedback = {
-  totalCustomers: '',
-  satisfiedCustomers: '',
-  overallRating: 0,
-  complaints: '',
-  highlights: '',
-};
+function asRecord(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
+}
 
-const StarRating = ({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-}) => (
-  <div className="flex gap-1">
-    {[1, 2, 3, 4, 5].map((star) => (
-      <button
-        key={star}
-        type="button"
-        onClick={() => onChange(star)}
-        className={`transition-all hover:scale-110 ${star <= value ? 'text-yellow-400' : 'text-muted-foreground/30'
-          }`}
-      >
-        <Star className="h-7 w-7 fill-current" />
-      </button>
-    ))}
-  </div>
-);
+function getErrorMessage(err: unknown): string {
+  const r = asRecord(err);
+  const msg = r?.message;
+  return typeof msg === 'string' ? msg : 'Unexpected error';
+}
+
+const defaultFeedback = {
+  dayFeedback: '',
+};
 
 const PartnerDashboard = () => {
   const { user } = useAuth();
@@ -80,18 +64,52 @@ const PartnerDashboard = () => {
     try {
       const data = await getSalesHistory();
       const list = Array.isArray(data) ? data : [];
-      setSales(list.map((r: any) => ({
-        id: r.id,
-        date: typeof r.date === 'string' ? r.date : r.date?.toISOString?.()?.split('T')[0] ?? '',
-        product_name: r.productName ?? r.product_name ?? '',
-        quantity: r.quantity ?? 0,
-        sales_amount: r.salesAmount ?? r.sales_amount ?? 0,
-        profit: r.profit ?? 0,
-        created_at: r.createdAt ?? r.created_at ?? '',
-      })));
-    } catch (err: any) {
+      setSales(list.map((rUnknown) => {
+        const r = asRecord(rUnknown) || {};
+        const dateVal = r.date;
+        const iso =
+          typeof dateVal === 'string'
+            ? dateVal
+            : dateVal && typeof dateVal === 'object' && 'toISOString' in dateVal && typeof (dateVal as { toISOString?: unknown }).toISOString === 'function'
+              ? String((dateVal as { toISOString: () => string }).toISOString()).split('T')[0]
+              : '';
+
+        const id = typeof r.id === 'string' ? r.id : '';
+        const productName =
+          typeof r.productName === 'string'
+            ? r.productName
+            : typeof r.product_name === 'string'
+              ? r.product_name
+              : '';
+
+        const quantity = typeof r.quantity === 'number' ? r.quantity : 0;
+        const salesAmount =
+          typeof r.salesAmount === 'number'
+            ? r.salesAmount
+            : typeof r.sales_amount === 'number'
+              ? r.sales_amount
+              : 0;
+        const profit = typeof r.profit === 'number' ? r.profit : 0;
+        const createdAt =
+          typeof r.createdAt === 'string'
+            ? r.createdAt
+            : typeof r.created_at === 'string'
+              ? r.created_at
+              : '';
+
+        return {
+          id,
+          date: iso,
+          product_name: productName,
+          quantity,
+          sales_amount: salesAmount,
+          profit,
+          created_at: createdAt,
+        };
+      }));
+    } catch (err: unknown) {
       console.error('Failed to fetch sales history', err);
-      toast.error(err.message || 'Failed to load sales data');
+      toast.error(getErrorMessage(err) || 'Failed to load sales data');
     } finally {
       setLoading(false);
     }
@@ -113,24 +131,17 @@ const PartnerDashboard = () => {
         profit: parseFloat(formData.profit),
       });
 
-      // Submit customer feedback if the section is filled
-      const hasFeedback =
-        feedbackData.totalCustomers !== '' &&
-        feedbackData.satisfiedCustomers !== '' &&
-        feedbackData.overallRating > 0;
+      // Submit daily report feedback if filled
+      const hasFeedback = !!feedbackData.dayFeedback.trim();
 
       if (hasFeedback) {
         try {
           await submitCustomerFeedback({
             date: formData.date,
-            totalCustomers: parseInt(feedbackData.totalCustomers, 10),
-            satisfiedCustomers: parseInt(feedbackData.satisfiedCustomers, 10),
-            overallRating: feedbackData.overallRating,
-            complaints: feedbackData.complaints.trim() || undefined,
-            highlights: feedbackData.highlights.trim() || undefined,
+            dayFeedback: feedbackData.dayFeedback.trim(),
           });
           toast.success('Sales record & customer feedback submitted!');
-        } catch (fbErr: any) {
+        } catch (fbErr: unknown) {
           // Record saved but feedback failed — warn but don't block
           toast.warning('Sales record saved. Customer feedback could not be submitted.');
           console.error('Feedback submit error:', fbErr);
@@ -149,9 +160,9 @@ const PartnerDashboard = () => {
       });
       setFeedbackData(defaultFeedback);
       fetchHistory();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Submit error:', err);
-      toast.error(err.message || 'Failed to submit sales record');
+      toast.error(getErrorMessage(err) || 'Failed to submit sales record');
     } finally {
       setSubmitting(false);
     }
@@ -180,14 +191,18 @@ const PartnerDashboard = () => {
   const totalProfit = sales.reduce((sum, r) => sum + Number(r.profit), 0);
   const totalRecords = sales.length;
 
-  const satisfactionPct =
-    feedbackData.totalCustomers && feedbackData.satisfiedCustomers
-      ? Math.round(
-        (parseInt(feedbackData.satisfiedCustomers, 10) /
-          parseInt(feedbackData.totalCustomers, 10)) *
-        100
-      )
-      : null;
+  // Aggregate total quantity per product for quick overview
+  const productSummary = useMemo(() => {
+    const map = new Map<string, { name: string; totalQty: number; totalRevenue: number }>();
+    sales.forEach((s) => {
+      const key = s.product_name || 'Unknown';
+      const existing = map.get(key) || { name: key, totalQty: 0, totalRevenue: 0 };
+      existing.totalQty += s.quantity;
+      existing.totalRevenue += Number(s.sales_amount);
+      map.set(key, existing);
+    });
+    return Array.from(map.values()).sort((a, b) => b.totalQty - a.totalQty).slice(0, 5);
+  }, [sales]);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -248,8 +263,8 @@ const PartnerDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        {/* Left column: Sales form + Customer Feedback */}
-        <div className="xl:col-span-1 flex flex-col gap-6">
+        {/* Left column: Sales form + Daily Feedback */}
+        <div className="xl:col-span-2 flex flex-col gap-6">
           {/* Sales Entry Form */}
           <Card className="border-none shadow-lg">
             <CardHeader>
@@ -350,112 +365,21 @@ const PartnerDashboard = () => {
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 )}
               </CardTitle>
-              <CardDescription>Optional — share today's customer insights</CardDescription>
+              <CardDescription>Optional — add a short note about today's performance</CardDescription>
             </CardHeader>
 
             {showFeedback && (
               <CardContent className="space-y-5">
-                {/* Customer counts */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="totalCustomers" className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                      <Users className="h-3 w-3" /> Total Customers
-                    </Label>
-                    <Input
-                      id="totalCustomers"
-                      type="number"
-                      min="0"
-                      value={feedbackData.totalCustomers}
-                      onChange={(e) => setFeedbackData({ ...feedbackData, totalCustomers: e.target.value })}
-                      placeholder="120"
-                      className="h-11 shadow-sm"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="satisfiedCustomers" className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                      <ThumbsUp className="h-3 w-3" /> Satisfied
-                    </Label>
-                    <Input
-                      id="satisfiedCustomers"
-                      type="number"
-                      min="0"
-                      value={feedbackData.satisfiedCustomers}
-                      onChange={(e) => setFeedbackData({ ...feedbackData, satisfiedCustomers: e.target.value })}
-                      placeholder="105"
-                      className="h-11 shadow-sm"
-                    />
-                  </div>
-                </div>
-
-                {/* Live satisfaction indicator */}
-                {satisfactionPct !== null && !isNaN(satisfactionPct) && (
-                  <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-muted/40">
-                    <div
-                      className={`text-lg font-bold ${satisfactionPct >= 80
-                          ? 'text-green-500'
-                          : satisfactionPct >= 60
-                            ? 'text-yellow-500'
-                            : 'text-red-500'
-                        }`}
-                    >
-                      {satisfactionPct}%
-                    </div>
-                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${satisfactionPct >= 80
-                            ? 'bg-green-500'
-                            : satisfactionPct >= 60
-                              ? 'bg-yellow-500'
-                              : 'bg-red-500'
-                          }`}
-                        style={{ width: `${Math.min(satisfactionPct, 100)}%` }}
-                      />
-                    </div>
-                    <span className="text-xs text-muted-foreground">satisfaction</span>
-                  </div>
-                )}
-
-                {/* Star rating */}
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                    <Star className="h-3 w-3" /> Overall Rating
-                  </Label>
-                  <StarRating
-                    value={feedbackData.overallRating}
-                    onChange={(v) => setFeedbackData({ ...feedbackData, overallRating: v })}
-                  />
-                  {feedbackData.overallRating > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      {['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'][feedbackData.overallRating]}
-                    </p>
-                  )}
-                </div>
-
-                {/* Highlights */}
-                <div className="space-y-2">
-                  <Label htmlFor="highlights" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Highlights / Positives
+                  <Label htmlFor="dayFeedback" className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                    <MessageSquare className="h-3 w-3" /> Day Feedback
                   </Label>
                   <Textarea
-                    id="highlights"
-                    value={feedbackData.highlights}
-                    onChange={(e) => setFeedbackData({ ...feedbackData, highlights: e.target.value })}
-                    placeholder="What went well today?"
-                    className="resize-none min-h-[70px] shadow-sm"
-                  />
-                </div>
-
-                {/* Complaints */}
-                <div className="space-y-2">
-                  <Label htmlFor="complaints" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Complaints / Issues
-                  </Label>
-                  <Textarea
-                    id="complaints"
-                    value={feedbackData.complaints}
-                    onChange={(e) => setFeedbackData({ ...feedbackData, complaints: e.target.value })}
-                    placeholder="Any customer complaints or issues?"
-                    className="resize-none min-h-[70px] shadow-sm"
+                    id="dayFeedback"
+                    value={feedbackData.dayFeedback}
+                    onChange={(e) => setFeedbackData({ ...feedbackData, dayFeedback: e.target.value })}
+                    placeholder="Write today's feedback for the analyst (only you and the analyst can see this)."
+                    className="resize-none min-h-[120px] shadow-sm"
                   />
                 </div>
               </CardContent>
@@ -474,104 +398,43 @@ const PartnerDashboard = () => {
             Submit Record
           </Button>
         </div>
-
-        {/* Sales History Table */}
-        <Card className="xl:col-span-2 border-none shadow-lg overflow-hidden">
-          <CardHeader className="border-b bg-muted/20 pb-5">
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <History className="text-muted-foreground h-5 w-5" />
-              Sales History
-            </CardTitle>
-            <CardDescription>Your branch's submitted sales records</CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-              <Table>
-                <TableHeader className="bg-muted/30 sticky top-0">
-                  <TableRow>
-                    <TableHead className="font-bold uppercase text-xs w-[120px]">Date</TableHead>
-                    <TableHead className="font-bold uppercase text-xs">Product</TableHead>
-                    <TableHead className="font-bold uppercase text-xs text-right">Qty</TableHead>
-                    <TableHead className="font-bold uppercase text-xs text-right">Sales (₹)</TableHead>
-                    <TableHead className="font-bold uppercase text-xs text-right">Profit (₹)</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sales.map((record) => (
-                    <TableRow key={record.id} className="hover:bg-muted/40 transition-colors border-muted/50">
-                      <TableCell className="font-medium text-sm">
-                        {new Date(record.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </TableCell>
-                      <TableCell className="text-sm font-semibold">{record.product_name}</TableCell>
-                      <TableCell className="text-right font-mono text-sm">{record.quantity}</TableCell>
-                      <TableCell className="text-right font-bold font-mono text-sm text-chart-2">
-                        ₹{Number(record.sales_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </TableCell>
-                      <TableCell className="text-right font-bold font-mono text-sm text-chart-1">
-                        ₹{Number(record.profit).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {sales.length === 0 && !loading && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="h-48 text-center text-muted-foreground">
-                        <div className="flex flex-col items-center gap-2">
-                          <AlertCircle className="h-8 w-8 opacity-20" />
-                          <p>No sales records yet. Start entering daily data!</p>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
-      {/* Monthly Performance Chart */}
-      {monthlyData.length > 0 && (
-        <Card className="border-none shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <BarChart3 className="text-muted-foreground h-5 w-5" />
-              Monthly Performance
-            </CardTitle>
-            <CardDescription>Revenue and profit trends for your branch</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px] min-h-[250px] w-full">
-              <ResponsiveContainer width="100%" height="100%" minHeight={250}>
-                <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis
-                    dataKey="month"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                    tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'hsl(var(--card))',
-                      borderColor: 'hsl(var(--border))',
-                      borderRadius: '8px',
-                    }}
-                    formatter={(value: number) => [`₹${value.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, '']}
-                  />
-                  <Bar dataKey="revenue" name="Revenue" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="profit" name="Profit" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+      {/* Product summary list on the right */}
+      <Card className="xl:col-span-1 border-border/50 shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Package className="h-5 w-5 text-chart-4" />
+            Top Products
+          </CardTitle>
+          <CardDescription>Most frequently sold products based on submitted records.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {productSummary.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 text-muted-foreground py-8">
+              <AlertCircle className="h-8 w-8 opacity-20" />
+              <p className="text-sm">No product data yet. Submit your first sales record to see the summary.</p>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <ul className="space-y-3">
+              {productSummary.map((p) => (
+                <li
+                  key={p.name}
+                  className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/40 px-3 py-2"
+                >
+                  <div>
+                    <p className="font-medium text-sm">{p.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {p.totalQty} units • ₹
+                      {p.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };

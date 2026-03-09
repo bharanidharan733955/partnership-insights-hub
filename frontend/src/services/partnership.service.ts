@@ -41,13 +41,26 @@ class PartnershipService {
      */
     async submitCustomerFeedback(data: {
         date: string;
-        totalCustomers: number;
-        satisfiedCustomers: number;
-        overallRating: number;
+        dayFeedback: string;
+        totalCustomers?: number;
+        satisfiedCustomers?: number;
+        overallRating?: number;
         complaints?: string;
         highlights?: string;
-    }): Promise<any> {
-        const response = await apiClient.post('/feedback/customer', data);
+    }): Promise<unknown> {
+        const response = await apiClient.post<unknown>('/feedback/customer', data);
+        return response.data;
+    }
+
+    /**
+     * Get daily customer feedback entries (PARTNER sees own branch; ANALYST sees all)
+     */
+    async getCustomerFeedback(params?: {
+        branchId?: string;
+        startDate?: string;
+        endDate?: string;
+    }): Promise<unknown[]> {
+        const response = await apiClient.get<unknown[]>('/feedback/customer', { params });
         return response.data;
     }
 

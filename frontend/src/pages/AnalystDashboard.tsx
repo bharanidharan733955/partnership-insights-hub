@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 interface SalesRecord {
   id: string;
@@ -76,7 +75,6 @@ const AnalystDashboard = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const chartRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchData();
@@ -145,22 +143,6 @@ const AnalystDashboard = () => {
   const totalRevenue = filteredSales.reduce((sum, r) => sum + Number(r.sales_amount), 0);
   const totalProfit = filteredSales.reduce((sum, r) => sum + Number(r.profit), 0);
   const uniqueBranches = new Set(filteredSales.map(r => r.branch_id)).size;
-
-  const monthlyTrend = useMemo(() => {
-    const monthMap: Record<string, { month: string; revenue: number; profit: number }> = {};
-    filteredSales.forEach((record) => {
-      const date = new Date(record.date);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const label = date.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
-      if (!monthMap[key]) monthMap[key] = { month: label, revenue: 0, profit: 0 };
-      monthMap[key].revenue += Number(record.sales_amount);
-      monthMap[key].profit += Number(record.profit);
-    });
-    return Object.entries(monthMap)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-12)
-      .map(([, v]) => v);
-  }, [filteredSales]);
 
   const selectedBranchMeta = useMemo(() => {
     if (selectedBranch === 'all') return null;
@@ -250,8 +232,26 @@ const AnalystDashboard = () => {
       const fmt = (n: number) =>
         n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+      const fmtShort = (n: number) => {
+        if (n >= 10000000) return `${(n / 10000000).toFixed(2)}Cr`;
+        if (n >= 100000) return `${(n / 100000).toFixed(2)}L`;
+        if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+        return n.toFixed(0);
+      };
+
       const pct = (num: number, den: number) =>
         den === 0 ? '0.00%' : `${((num / den) * 100).toFixed(2)}%`;
+
+      const truncText = (text: string, maxW: number): string =>
+        String(doc.splitTextToSize(text, maxW)[0]);
+
+      const formatDate = (d: string): string => {
+        if (!d) return '—';
+        // Handle ISO strings like "2026-03-07T00:00:00.000Z"
+        if (d.includes('T')) return d.split('T')[0];
+        // Already short
+        return d.length > 10 ? d.substring(0, 10) : d;
+      };
 
       // ── Derived data ───────────────────────────────────────────────────────
       const profitMargin = totalRevenue === 0 ? 0 : (totalProfit / totalRevenue) * 100;
@@ -325,22 +325,188 @@ const AnalystDashboard = () => {
         doc.roundedRect(bx, y, boxW, 22, 2, 2, 'FD');
         doc.setFontSize(8);
         doc.setTextColor(100, 116, 139);
-        doc.setFont(undefined, 'normal');
-        doc.text(box.label, bx + 4, y + 6);
-        doc.setFontSize(12);
+        doc.setFont(undefined as any, 'normal');
+        doc.text(truncText(box.label, boxW - 8), bx + 4, y + 6);
+        doc.setFontSize(11);
         doc.setTextColor(15, 23, 42);
-        doc.setFont(undefined, 'bold');
-        doc.text(box.value, bx + 4, y + 14);
-        doc.setFontSize(7.5);
-        doc.setFont(undefined, 'normal');
+        doc.setFont(undefined as any, 'bold');
+        doc.text(truncText(box.value, boxW - 8), bx + 4, y + 14);
+        doc.setFontSize(7);
+        doc.setFont(undefined as any, 'normal');
         doc.setTextColor(100, 116, 139);
-        doc.text(box.sub, bx + 4, y + 20);
+        doc.text(truncText(box.sub, boxW - 8), bx + 4, y + 20);
       });
       y += 30;
 
-      // ── Branch Breakdown Table ─────────────────────────────────────────────
+      // ── CHART: Revenue Trend (top 10 dates) ────────────────────────────
+      const trendMap: Record<string, { revenue: number; profit: number }> = {};
+      filteredSales.forEach(r => {
+        const d = formatDate(r.date);
+        if (!trendMap[d]) trendMap[d] = { revenue: 0, profit: 0 };
+        trendMap[d].revenue += Number(r.sales_amount);
+        trendMap[d].profit += Number(r.profit);
+      });
+      const trendEntries = Object.entries(trendMap)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .slice(-10);
+
+      if (trendEntries.length > 0) {
+        const barCount = trendEntries.length;
+        const barH = 7;
+        const barGap = 3;
+        const chartH = barCount * (barH + barGap) + 12;
+        const labelW = 28;
+        const barMaxW = usableW - labelW - 52;
+        const maxRev = Math.max(...trendEntries.map(([, v]) => v.revenue), 1);
+
+        if (y + chartH + 5 > PH - 20) { newPage(); y = 20; }
+
+        doc.setFontSize(11);
+        doc.setFont(undefined as any, 'bold');
+        doc.setTextColor(30, 41, 59);
+        doc.text('Revenue Trend (Recent Dates)', ML, y);
+        y += 2;
+
+        // Legend
+        doc.setFontSize(6.5);
+        doc.setFont(undefined as any, 'normal');
+        doc.setFillColor(59, 130, 246);
+        doc.rect(ML + usableW - 60, y, 3, 3, 'F');
+        doc.setTextColor(100, 116, 139);
+        doc.text('Revenue', ML + usableW - 56, y + 2.5);
+        doc.setFillColor(34, 197, 94);
+        doc.rect(ML + usableW - 36, y, 3, 3, 'F');
+        doc.text('Profit', ML + usableW - 32, y + 2.5);
+        y += 6;
+
+        doc.setFillColor(250, 250, 252);
+        doc.setDrawColor(230, 230, 240);
+        doc.roundedRect(ML, y, usableW, barCount * (barH + barGap) + 4, 2, 2, 'FD');
+
+        trendEntries.forEach(([date, v], i) => {
+          const by = y + 2 + i * (barH + barGap);
+
+          doc.setFontSize(7);
+          doc.setFont(undefined as any, 'normal');
+          doc.setTextColor(71, 85, 105);
+          doc.text(truncText(date, labelW - 3), ML + 2, by + barH / 2 + 1.5);
+
+          const bw = (v.revenue / maxRev) * barMaxW;
+          doc.setFillColor(59, 130, 246);
+          doc.roundedRect(ML + labelW, by, Math.max(bw, 1), barH / 2, 0.8, 0.8, 'F');
+
+          const bw2 = (v.profit / maxRev) * barMaxW;
+          doc.setFillColor(34, 197, 94);
+          doc.roundedRect(ML + labelW, by + barH / 2 + 0.5, Math.max(bw2, 1), barH / 2 - 0.5, 0.8, 0.8, 'F');
+
+          doc.setFontSize(6);
+          doc.setFont(undefined as any, 'bold');
+          doc.setTextColor(30, 41, 59);
+          doc.text(`INR ${fmtShort(v.revenue)}`, ML + labelW + Math.max(bw, 1) + 2, by + barH / 2);
+          doc.setTextColor(22, 101, 52);
+          doc.text(`INR ${fmtShort(v.profit)}`, ML + labelW + Math.max(bw2, 1) + 2, by + barH - 0.5);
+        });
+
+        y += barCount * (barH + barGap) + 10;
+      }
+
+      // ── PAGE 2: Branch + Product Charts ─────────────────────────────────
+      newPage();
+      y = 20;
+
+      doc.setFillColor(30, 41, 59);
+      doc.rect(0, 0, PW, 14, 'F');
+      doc.setFontSize(10);
+      doc.setFont(undefined as any, 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('PARTNERSHIP INSIGHTS HUB — Analysis Charts', ML, 9);
+      doc.setFont(undefined as any, 'normal');
+      doc.setFontSize(9);
+      doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, PW - MR, 9, { align: 'right' });
+
+      const halfW = (usableW - 10) / 2;
+      const maxChartItems = Math.min(Math.max(branchRows.length, productRows.length, 1), 8);
+      const cBarH = 8;
+      const cBarGap = 3;
+      const sectionChartH = maxChartItems * (cBarH + cBarGap) + 12;
+
+      // ── CHART 2: Branch Revenue Comparison (left half) ──────────────────
+      const branchChartSlice = branchRows.slice(0, 8);
+      if (branchChartSlice.length > 0) {
+        const maxBrRev = Math.max(...branchChartSlice.map(b => b.revenue), 1);
+        const cLabelW = 30;
+        const cBarMaxW = halfW - cLabelW - 26;
+
+        doc.setFontSize(10);
+        doc.setFont(undefined as any, 'bold');
+        doc.setTextColor(30, 41, 59);
+        doc.text('Branch Revenue Comparison', ML, y);
+
+        const chartStartY = y + 5;
+        doc.setFillColor(250, 250, 252);
+        doc.setDrawColor(230, 230, 240);
+        doc.roundedRect(ML, chartStartY, halfW, branchChartSlice.length * (cBarH + cBarGap) + 4, 2, 2, 'FD');
+
+        branchChartSlice.forEach((b, i) => {
+          const by = chartStartY + 2 + i * (cBarH + cBarGap);
+          doc.setFontSize(6.5);
+          doc.setFont(undefined as any, 'normal');
+          doc.setTextColor(71, 85, 105);
+          doc.text(truncText(b.name, cLabelW - 3), ML + 2, by + cBarH / 2 + 1.5);
+
+          const bw = (b.revenue / maxBrRev) * cBarMaxW;
+          doc.setFillColor(99, 102, 241);
+          doc.roundedRect(ML + cLabelW, by + 0.5, Math.max(bw, 1), cBarH - 1, 1, 1, 'F');
+
+          doc.setFontSize(6);
+          doc.setFont(undefined as any, 'bold');
+          doc.setTextColor(30, 41, 59);
+          doc.text(`INR ${fmtShort(b.revenue)}`, ML + cLabelW + Math.max(bw, 1) + 2, by + cBarH / 2 + 1);
+        });
+      }
+
+      // ── CHART 3: Product Revenue Distribution (right half) ─────────────
+      const productChartSlice = productRows.slice(0, 8);
+      const rightX = ML + halfW + 10;
+      if (productChartSlice.length > 0) {
+        const maxPrRev = Math.max(...productChartSlice.map(p => p.revenue), 1);
+        const cLabelW = 30;
+        const cBarMaxW = halfW - cLabelW - 26;
+
+        doc.setFontSize(10);
+        doc.setFont(undefined as any, 'bold');
+        doc.setTextColor(30, 41, 59);
+        doc.text('Product Revenue Distribution', rightX, y);
+
+        const chartStartY = y + 5;
+        doc.setFillColor(250, 250, 252);
+        doc.setDrawColor(230, 230, 240);
+        doc.roundedRect(rightX, chartStartY, halfW, productChartSlice.length * (cBarH + cBarGap) + 4, 2, 2, 'FD');
+
+        productChartSlice.forEach((p, i) => {
+          const by = chartStartY + 2 + i * (cBarH + cBarGap);
+          doc.setFontSize(6.5);
+          doc.setFont(undefined as any, 'normal');
+          doc.setTextColor(71, 85, 105);
+          doc.text(truncText(p.name, cLabelW - 3), rightX + 2, by + cBarH / 2 + 1.5);
+
+          const bw = (p.revenue / maxPrRev) * cBarMaxW;
+          doc.setFillColor(236, 72, 153);
+          doc.roundedRect(rightX + cLabelW, by + 0.5, Math.max(bw, 1), cBarH - 1, 1, 1, 'F');
+
+          doc.setFontSize(6);
+          doc.setFont(undefined as any, 'bold');
+          doc.setTextColor(30, 41, 59);
+          doc.text(`INR ${fmtShort(p.revenue)}`, rightX + cLabelW + Math.max(bw, 1) + 2, by + cBarH / 2 + 1);
+        });
+      }
+      y += sectionChartH + 8;
+
+      // ── Branch Breakdown Table ──────────────────────────────────────────
+      if (y + 40 > PH - 20) { newPage(); y = 20; }
+
       doc.setFontSize(11);
-      doc.setFont(undefined, 'bold');
+      doc.setFont(undefined as any, 'bold');
       doc.setTextColor(30, 41, 59);
       doc.text('Branch Performance Breakdown', ML, y);
       y += 5;
@@ -348,62 +514,62 @@ const AnalystDashboard = () => {
       y += 5;
 
       const bCols = [
-        { label: 'Branch', w: 42 },
-        { label: 'Location', w: 36 },
-        { label: 'Partner', w: 36 },
+        { label: 'Branch', w: 40 },
+        { label: 'Location', w: 34 },
+        { label: 'Partner', w: 34 },
         { label: 'Records', w: 20 },
         { label: 'Total Qty', w: 22 },
-        { label: 'Revenue (INR)', w: 44 },
-        { label: 'Profit (INR)', w: 40 },
-        { label: 'Margin %', w: 29 },
+        { label: 'Revenue (INR)', w: 46 },
+        { label: 'Profit (INR)', w: 42 },
+        { label: 'Margin %', w: 31 },
       ];
 
       doc.setFillColor(30, 41, 59);
       doc.rect(ML, y, usableW, 7, 'F');
-      doc.setFontSize(8);
-      doc.setFont(undefined, 'bold');
+      doc.setFontSize(7.5);
+      doc.setFont(undefined as any, 'bold');
       doc.setTextColor(255, 255, 255);
       cx = ML + 2;
       bCols.forEach(col => { doc.text(col.label, cx, y + 5); cx += col.w; });
       y += 7;
 
-      doc.setFont(undefined, 'normal');
+      doc.setFont(undefined as any, 'normal');
       branchRows.forEach((row, idx) => {
         if (y > PH - 20) { newPage(); y = 20; }
         if (idx % 2 === 0) { doc.setFillColor(248, 250, 252); doc.rect(ML, y, usableW, 6.5, 'F'); }
         doc.setTextColor(15, 23, 42);
-        doc.setFontSize(8);
+        doc.setFontSize(7.5);
         cx = ML + 2;
         const cells = [
-          doc.splitTextToSize(row.name, bCols[0].w - 3)[0],
-          doc.splitTextToSize(row.location, bCols[1].w - 3)[0],
-          doc.splitTextToSize(row.partner, bCols[2].w - 3)[0],
+          truncText(row.name, bCols[0].w - 5),
+          truncText(row.location, bCols[1].w - 5),
+          truncText(row.partner, bCols[2].w - 5),
           String(row.count),
           String(row.qty),
-          fmt(row.revenue),
-          fmt(row.profit),
+          truncText(fmt(row.revenue), bCols[5].w - 5),
+          truncText(fmt(row.profit), bCols[6].w - 5),
           pct(row.profit, row.revenue),
         ];
-        cells.forEach((cell, i) => { doc.text(String(cell), cx, y + 4.5); cx += bCols[i].w; });
+        cells.forEach((cell, i) => { doc.text(cell, cx, y + 4.5); cx += bCols[i].w; });
         y += 6.5;
       });
 
       // Totals row
       doc.setFillColor(241, 245, 249);
       doc.rect(ML, y, usableW, 7, 'F');
-      doc.setFont(undefined, 'bold');
-      doc.setFontSize(8);
+      doc.setFont(undefined as any, 'bold');
+      doc.setFontSize(7.5);
       doc.setTextColor(30, 41, 59);
       cx = ML + 2;
       ['TOTAL', '', '', String(filteredSales.length), String(totalQty), fmt(totalRevenue), fmt(totalProfit), `${profitMargin.toFixed(2)}%`]
         .forEach((cell, i) => { doc.text(cell, cx, y + 5); cx += bCols[i].w; });
       y += 12;
 
-      // ── Product Summary Table ──────────────────────────────────────────────
+      // ── Product Summary Table ──────────────────────────────────────────
       if (y > PH - 50) { newPage(); y = 20; }
 
       doc.setFontSize(11);
-      doc.setFont(undefined, 'bold');
+      doc.setFont(undefined as any, 'bold');
       doc.setTextColor(30, 41, 59);
       doc.text('Product Performance Summary', ML, y);
       y += 5;
@@ -411,84 +577,85 @@ const AnalystDashboard = () => {
       y += 5;
 
       const pCols = [
-        { label: 'Product', w: 72 },
-        { label: 'Records', w: 25 },
-        { label: 'Total Qty', w: 28 },
-        { label: 'Revenue (INR)', w: 55 },
-        { label: 'Profit (INR)', w: 50 },
+        { label: 'Product', w: 68 },
+        { label: 'Records', w: 24 },
+        { label: 'Total Qty', w: 26 },
+        { label: 'Revenue (INR)', w: 52 },
+        { label: 'Profit (INR)', w: 48 },
         { label: 'Margin %', w: 28 },
-        { label: '% of Revenue', w: 35 },
+        { label: '% of Rev', w: 23 },
       ];
 
       doc.setFillColor(30, 41, 59);
       doc.rect(ML, y, usableW, 7, 'F');
-      doc.setFontSize(8);
-      doc.setFont(undefined, 'bold');
+      doc.setFontSize(7.5);
+      doc.setFont(undefined as any, 'bold');
       doc.setTextColor(255, 255, 255);
       cx = ML + 2;
       pCols.forEach(col => { doc.text(col.label, cx, y + 5); cx += col.w; });
       y += 7;
 
-      doc.setFont(undefined, 'normal');
+      doc.setFont(undefined as any, 'normal');
       productRows.forEach((row, idx) => {
         if (y > PH - 20) { newPage(); y = 20; }
         if (idx % 2 === 0) { doc.setFillColor(248, 250, 252); doc.rect(ML, y, usableW, 6.5, 'F'); }
         doc.setTextColor(15, 23, 42);
-        doc.setFontSize(8);
+        doc.setFontSize(7.5);
         cx = ML + 2;
         [
-          doc.splitTextToSize(row.name, pCols[0].w - 3)[0],
+          truncText(row.name, pCols[0].w - 5),
           String(row.count),
           String(row.qty),
-          fmt(row.revenue),
-          fmt(row.profit),
+          truncText(fmt(row.revenue), pCols[3].w - 5),
+          truncText(fmt(row.profit), pCols[4].w - 5),
           pct(row.profit, row.revenue),
           pct(row.revenue, totalRevenue),
-        ].forEach((cell, i) => { doc.text(String(cell), cx, y + 4.5); cx += pCols[i].w; });
+        ].forEach((cell, i) => { doc.text(cell, cx, y + 4.5); cx += pCols[i].w; });
         y += 6.5;
       });
       y += 6;
 
-      // ── PAGE 2+: Full Transaction Log ──────────────────────────────────────
+      // ── Full Transaction Log ──────────────────────────────────────────
       newPage();
       y = 18;
 
       doc.setFillColor(30, 41, 59);
       doc.rect(0, 0, PW, 14, 'F');
       doc.setFontSize(10);
-      doc.setFont(undefined, 'bold');
+      doc.setFont(undefined as any, 'bold');
       doc.setTextColor(255, 255, 255);
       doc.text('PARTNERSHIP INSIGHTS HUB — Transaction Log', ML, 9);
-      doc.setFont(undefined, 'normal');
+      doc.setFont(undefined as any, 'normal');
       doc.setFontSize(9);
       doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, PW - MR, 9, { align: 'right' });
 
       y = 22;
       doc.setFontSize(11);
-      doc.setFont(undefined, 'bold');
+      doc.setFont(undefined as any, 'bold');
       doc.setTextColor(30, 41, 59);
       doc.text('Detailed Transaction Records', ML, y);
       y += 5;
       drawHRule(y, [148, 163, 184]);
       y += 5;
 
+      // Total must equal usableW (269mm): 24+30+28+26+40+14+42+36+29 = 269
       const tCols = [
         { label: 'Date', w: 24 },
-        { label: 'Partner', w: 38 },
-        { label: 'Branch', w: 36 },
-        { label: 'Location', w: 34 },
-        { label: 'Product', w: 50 },
-        { label: 'Qty', w: 16 },
-        { label: 'Revenue (INR)', w: 40 },
+        { label: 'Partner', w: 30 },
+        { label: 'Branch', w: 28 },
+        { label: 'Location', w: 26 },
+        { label: 'Product', w: 40 },
+        { label: 'Qty', w: 14 },
+        { label: 'Revenue (INR)', w: 42 },
         { label: 'Profit (INR)', w: 36 },
-        { label: 'Margin %', w: 22 },
+        { label: 'Margin %', w: 29 },
       ];
 
       const drawTxHeader = () => {
         doc.setFillColor(30, 41, 59);
         doc.rect(ML, y, usableW, 7, 'F');
-        doc.setFontSize(8);
-        doc.setFont(undefined, 'bold');
+        doc.setFontSize(7.5);
+        doc.setFont(undefined as any, 'bold');
         doc.setTextColor(255, 255, 255);
         cx = ML + 2;
         tCols.forEach(col => { doc.text(col.label, cx, y + 5); cx += col.w; });
@@ -497,38 +664,38 @@ const AnalystDashboard = () => {
       drawTxHeader();
       y += 7;
 
-      doc.setFont(undefined, 'normal');
+      doc.setFont(undefined as any, 'normal');
       filteredSales.forEach((r, idx) => {
         if (y > PH - 16) { newPage(); y = 20; drawTxHeader(); y += 7; }
-        if (idx % 2 === 0) { doc.setFillColor(248, 250, 252); doc.rect(ML, y, usableW, 6, 'F'); }
+        if (idx % 2 === 0) { doc.setFillColor(248, 250, 252); doc.rect(ML, y, usableW, 6.5, 'F'); }
         doc.setTextColor(15, 23, 42);
-        doc.setFontSize(7.5);
+        doc.setFontSize(7);
         cx = ML + 2;
         const rowMargin = Number(r.sales_amount) === 0 ? '0.00%' : `${((Number(r.profit) / Number(r.sales_amount)) * 100).toFixed(2)}%`;
         [
-          r.date,
-          doc.splitTextToSize(r.branches?.partners?.name || '—', tCols[1].w - 3)[0],
-          doc.splitTextToSize(r.branches?.name || '—', tCols[2].w - 3)[0],
-          doc.splitTextToSize(r.branches?.location || '—', tCols[3].w - 3)[0],
-          doc.splitTextToSize(r.product_name || '—', tCols[4].w - 3)[0],
+          formatDate(r.date),
+          truncText(r.branches?.partners?.name || '—', tCols[1].w - 4),
+          truncText(r.branches?.name || '—', tCols[2].w - 4),
+          truncText(r.branches?.location || '—', tCols[3].w - 4),
+          truncText(r.product_name || '—', tCols[4].w - 4),
           String(r.quantity),
-          fmt(Number(r.sales_amount)),
-          fmt(Number(r.profit)),
-          rowMargin,
-        ].forEach((cell, i) => { doc.text(String(cell), cx, y + 4); cx += tCols[i].w; });
-        y += 6;
+          truncText(fmt(Number(r.sales_amount)), tCols[6].w - 4),
+          truncText(fmt(Number(r.profit)), tCols[7].w - 4),
+          truncText(rowMargin, tCols[8].w - 4),
+        ].forEach((cell, i) => { doc.text(cell, cx, y + 4.5); cx += tCols[i].w; });
+        y += 6.5;
       });
 
       // Final totals
       if (y > PH - 16) { newPage(); y = 20; }
       doc.setFillColor(30, 41, 59);
       doc.rect(ML, y, usableW, 7, 'F');
-      doc.setFont(undefined, 'bold');
-      doc.setFontSize(8);
+      doc.setFont(undefined as any, 'bold');
+      doc.setFontSize(7.5);
       doc.setTextColor(255, 255, 255);
       cx = ML + 2;
-      ['TOTAL', '', '', '', `${filteredSales.length} records`, String(totalQty), fmt(totalRevenue), fmt(totalProfit), `${profitMargin.toFixed(2)}%`]
-        .forEach((cell, i) => { doc.text(cell, cx, y + 5); cx += tCols[i].w; });
+      ['TOTAL', '', '', '', `${filteredSales.length}`, String(totalQty), fmt(totalRevenue), fmt(totalProfit), `${profitMargin.toFixed(1)}%`]
+        .forEach((cell, i) => { doc.text(truncText(cell, tCols[i].w - 4), cx, y + 5); cx += tCols[i].w; });
 
       addPageNumber();
       doc.save(`sales_report_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -647,29 +814,6 @@ const AnalystDashboard = () => {
         </CardContent>
       </Card>
 
-      <Card className="lg:col-span-2 border-none shadow-lg" ref={chartRef}>
-        <CardHeader>
-          <CardTitle className="text-xl font-bold">Revenue & Profit Trends</CardTitle>
-          <CardDescription>Monthly aggregation for selected branch data</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[350px] min-h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minHeight={300}>
-              <BarChart data={monthlyTrend} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} tickFormatter={(v) => `INR ${(v / 1000).toFixed(0)}k`} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
-                  formatter={(value: number) => [`INR ${value.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, '']}
-                />
-                <Bar dataKey="revenue" name="Revenue" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} isAnimationActive animationDuration={1200} animationEasing="ease-out" />
-                <Bar dataKey="profit" name="Profit" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} isAnimationActive animationDuration={1200} animationEasing="ease-out" animationBegin={200} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
 
       <Card className="border-none shadow-lg">
         <CardHeader>

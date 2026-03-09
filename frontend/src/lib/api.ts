@@ -45,11 +45,20 @@ export async function submitSales(data: {
 
 export async function submitCustomerFeedback(data: {
   date: string;
-  totalCustomers: number;
-  satisfiedCustomers: number;
-  overallRating: number;
+  dayFeedback: string;
+  totalCustomers?: number;
+  satisfiedCustomers?: number;
+  overallRating?: number;
   complaints?: string;
   highlights?: string;
 }) {
   return partnershipService.submitCustomerFeedback(data);
+}
+
+export async function getCustomerFeedback(params?: {
+  branchId?: string;
+  startDate?: string;
+  endDate?: string;
+}) {
+  return partnershipService.getCustomerFeedback(params);
 }
