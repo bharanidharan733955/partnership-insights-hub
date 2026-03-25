@@ -9,11 +9,15 @@ const reportRoutes = require('./routes/reportRoutes');
 
 const app = express();
 
-app.use(cors());
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
+
+app.use(cors({
+    origin: frontendUrl
+}));
 app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
-app.get('/', (req, res) => res.send('Partnership Analytics API is running. Access the UI at http://localhost:8080'));
+app.get('/', (req, res) => res.send(`Partnership Analytics API is running. Access the UI at ${frontendUrl}`));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/partners', partnerRoutes);

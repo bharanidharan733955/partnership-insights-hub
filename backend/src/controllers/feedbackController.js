@@ -210,11 +210,15 @@ exports.getFeedbackStats = async (req, res) => {
 // Submit daily customer feedback (PARTNER / manager)
 exports.createCustomerFeedback = async (req, res) => {
     try {
-        const { date, totalCustomers, satisfiedCustomers, overallRating, complaints, highlights } = req.body;
+        const { date, dayFeedback, totalCustomers, satisfiedCustomers, overallRating, complaints, highlights } = req.body;
         const { branchId, id: submittedBy } = req.user;
 
         if (!branchId) {
             return res.status(400).json({ error: 'No branch assigned to your account' });
+        }
+
+        if (!dayFeedback || !String(dayFeedback).trim()) {
+            return res.status(400).json({ error: 'Day feedback is required' });
         }
 
         // Validate branch exists
@@ -227,9 +231,10 @@ exports.createCustomerFeedback = async (req, res) => {
             branchId,
             submittedBy,
             date: date ? new Date(date) : new Date(),
-            totalCustomers,
-            satisfiedCustomers,
-            overallRating,
+            dayFeedback: String(dayFeedback).trim(),
+            totalCustomers: totalCustomers === undefined ? null : totalCustomers,
+            satisfiedCustomers: satisfiedCustomers === undefined ? null : satisfiedCustomers,
+            overallRating: overallRating === undefined ? null : overallRating,
             complaints: complaints || '',
             highlights: highlights || ''
         });

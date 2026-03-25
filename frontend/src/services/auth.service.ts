@@ -57,6 +57,27 @@ class AuthService {
     }
 
     /**
+     * Register new partner user with Google-verified email
+     */
+    async googleRegister(data: {
+        idToken: string;
+        name: string;
+        password: string;
+        branchName: string;
+        branchLocation: string;
+    }): Promise<LoginResponse> {
+        const response = await apiClient.post<LoginResponse>('/auth/google-register', data);
+
+        // Store token and user in localStorage
+        if (response.data.token) {
+            localStorage.setItem('auth_token', response.data.token);
+            localStorage.setItem('auth_user', JSON.stringify(response.data.user));
+        }
+
+        return response.data;
+    }
+
+    /**
      * Logout current user
      */
     logout(): void {

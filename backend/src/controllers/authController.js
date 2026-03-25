@@ -30,4 +30,13 @@ const googleLogin = async (req, res) => {
     }
 };
 
-module.exports = { login, register, googleLogin };
+const googleRegister = async (req, res) => {
+    try {
+        const result = await authService.googleRegister(req.body);
+        res.status(201).json(result);
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+};
+
+module.exports = { login, register, googleLogin, googleRegister };

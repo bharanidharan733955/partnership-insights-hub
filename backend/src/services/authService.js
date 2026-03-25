@@ -163,4 +163,71 @@ const googleLogin = async (idToken) => {
     }
 };
 
-module.exports = { login, register, googleLogin };
+const googleRegister = async ({ idToken, name, password, branchName, branchLocation }) => {
+    try {
+        // Verify the Google ID token to get the authenticated email
+        const ticket = await client.verifyIdToken({
+            idToken,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
+        const payload = ticket.getPayload();
+        const { sub: googleId, email: googleEmail } = payload;
+
+        if (!googleEmail) {
+            throw new Error('Could not retrieve email from Google account.');
+        }
+
+        // Check if user already exists
+        const existing = await User.findOne({ email: googleEmail });
+        if (existing) {
+            throw new Error('This Google account is already registered. Please sign in instead.');
+        }
+
+        if (!branchName || !branchLocation) {
+            throw new Error('Branch name and location are required.');
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const partner = await Partner.create({ name: name || payload.name });
+        const branch = await Branch.create({
+            name: branchName,
+            location: branchLocation,
+            partnerId: partner._id
+        });
+        const user = await User.create({
+            email: googleEmail,
+            password: hashedPassword,
+            googleId,
+            name: name || payload.name,
+            role: 'PARTNER',
+            partnerId: partner._id,
+            branchId: branch._id
+        });
+
+        const token = jwt.sign(
+            { id: user._id.toString(), role: 'PARTNER', partnerId: partner._id.toString(), branchId: branch._id.toString() },
+            process.env.JWT_SECRET || 'secret',
+            { expiresIn: '7d' }
+        );
+
+        return {
+            user: {
+                id: user._id.toString(),
+                user_id: user._id.toString(),
+                email: user.email,
+                name: user.name,
+                role: 'partner',
+                branch_id: branch._id.toString(),
+                partner_id: partner._id.toString(),
+                branch: { id: branch._id.toString(), name: branch.name, location: branch.location },
+                partner: { id: partner._id.toString(), name: partner.name },
+            },
+            token
+        };
+    } catch (err) {
+        throw new Error(err.message || 'Google registration failed.');
+    }
+};
+
+module.exports = { login, register, googleLogin, googleRegister };

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authLogin, authRegister, authGoogleLogin } from '@/lib/api';
+import { authLogin, authRegister, authGoogleLogin, authGoogleRegister } from '@/lib/api';
 
 export type AppRole = 'analyst' | 'partner';
 
@@ -23,11 +23,20 @@ interface SignUpData {
   branchLocation: string;
 }
 
+interface GoogleSignUpData {
+  idToken: string;
+  name: string;
+  password: string;
+  branchName: string;
+  branchLocation: string;
+}
+
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (data: SignUpData) => Promise<void>;
+  googleSignUp: (data: GoogleSignUpData) => Promise<void>;
   googleSignIn: (idToken: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -70,6 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(normalized);
   };
 
+  const googleSignUp = async (data: GoogleSignUpData) => {
+    const { user: u, token } = await authGoogleRegister(data);
+    const normalized = normalizeUser(u);
+    localStorage.setItem(AUTH_TOKEN, token);
+    localStorage.setItem(AUTH_USER, JSON.stringify(normalized));
+    setUser(normalized);
+  };
+
   const googleSignIn = async (idToken: string) => {
     const { user: u, token } = await authGoogleLogin(idToken);
     const normalized = normalizeUser(u);
@@ -85,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, googleSignIn, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, googleSignUp, googleSignIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
