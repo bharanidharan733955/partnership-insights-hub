@@ -1,9 +1,15 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import type { ApiError } from '../types/api.types';
 
+// In production, VITE_BACKEND_URL points to Render backend (e.g. https://your-app.onrender.com)
+// In development, it falls back to '/api' which is proxied by Vite to localhost:5000
+const API_BASE_URL = import.meta.env.VITE_BACKEND_URL
+    ? `${import.meta.env.VITE_BACKEND_URL}/api`
+    : '/api';
+
 // Create axios instance with default config
 const apiClient: AxiosInstance = axios.create({
-    baseURL: '/api',
+    baseURL: API_BASE_URL,
     headers: {
         'Content-Type': 'application/json',
     },
