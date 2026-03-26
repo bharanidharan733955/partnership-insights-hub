@@ -15,7 +15,7 @@ import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
 // Use environment variable for Client ID
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "placeholder-client-id";
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 const queryClient = new QueryClient();
 
