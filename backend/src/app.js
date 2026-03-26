@@ -40,8 +40,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // 🔥 HANDLE PREFLIGHT
-app.options('*', cors(corsOptions));
-
+app.options('/*', cors(corsOptions));
 /* ================= MIDDLEWARE ================= */
 
 app.use(express.json());
