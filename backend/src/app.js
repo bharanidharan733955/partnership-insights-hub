@@ -28,7 +28,7 @@ app.use(cors({
 app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
-app.get('/', (req, res) => res.send(`Partnership Analytics API is running. Access the UI at ${frontendUrl}`));
+app.get('/', (req, res) => res.send(`Partnership Analytics API is running. Access the UI at ${process.env.FRONTEND_URL || 'http://localhost:8080'}`));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/partners', partnerRoutes);
